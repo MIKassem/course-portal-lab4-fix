@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{% block title %}Course Portal{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -13,7 +14,10 @@
       {% if current_user.is_authenticated %}
         <span>{{ current_user.username }} ({{ current_user.role }})</span>
         <a href="/inbox">Inbox</a>
-        <a href="/logout">Sign out</a>
+        <form method="post" action="/logout" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="link">Sign out</button>
+        </form>
       {% else %}
         <a href="/login">Sign in</a>
       {% endif %}

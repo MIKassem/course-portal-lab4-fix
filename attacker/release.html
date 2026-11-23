@@ -1,0 +1,13 @@
+<!doctype html>
+<!-- Step 17. One ordinary link. The portal changes data on a GET to
+     /staff/release/<course id> (step 8), so following the link is enough:
+     the browser sends dr_haddad's cookies with a top-level GET navigation,
+     even when the session cookie is SameSite=Lax. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>CMPS 215 exam schedule</title></head>
+<body>
+  <h1>CMPS 215 - final exam</h1>
+  <p>The room and time for the final exam are now published.</p>
+  <p><a id="lure" href="http://127.0.0.1:5002/staff/release/1">View the exam schedule</a></p>
+</body>
+</html>

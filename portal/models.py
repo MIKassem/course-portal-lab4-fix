@@ -21,16 +21,32 @@ class CourseTA(db.Model):
     course_id = db.Column(db.Integer, db.ForeignKey("course.id"), primary_key=True)
 
 
+class Extension(db.Model):
+    """N2: a new fact. A student's request for more time on one assignment.
+
+    Only an approved extension counts. The policy gives it a fixed grace period
+    (policy.EXTENSION_GRACE, 3 days) after the assignment deadline.
+    """
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), primary_key=True)
+    assignment_id = db.Column(db.Integer, db.ForeignKey("assignment.id"), primary_key=True)
+    approved = db.Column(db.Boolean, nullable=False, default=False)
+    approved_by = db.Column(db.Integer, db.ForeignKey("user.id"))
+
+
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(40), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), nullable=False)  # student, ta, instructor, registrar, chair
-    email = db.Column(db.String(120), nullable=False)
+    # Unique: the inbox and the reset mail are found by address, so two
+    # accounts with one address would read each other's mail.
+    email = db.Column(db.String(120), unique=True, nullable=False)
     department = db.Column(db.String(40), nullable=False, default="CS")
     enrollments = db.relationship("Enrollment", backref="user", cascade="all, delete-orphan")
     ta_links = db.relationship("CourseTA", backref="user", cascade="all, delete-orphan")
     courses_taught = db.relationship("Course", backref="instructor")
+    extensions = db.relationship("Extension", foreign_keys="Extension.user_id",
+                                 cascade="all, delete-orphan")
 
     def set_password(self, pw, method=None):
         if method:
@@ -56,6 +72,14 @@ class User(db.Model, UserMixin):
     @property
     def staff_of(self):           # courses I teach OR assist
         return self.teaches | self.assists
+
+    @property
+    def approved_extensions(self):  # N2: assignments I have an approved extension on
+        return {e.assignment_id for e in self.extensions if e.approved}
+
+    @property
+    def chair_of(self):           # N1: departments I chair
+        return {self.department} if self.role == "chair" else set()
 
 
 class Course(db.Model):

